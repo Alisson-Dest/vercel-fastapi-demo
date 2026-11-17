@@ -1,28 +1,30 @@
-# A small FastAPI app. Vercel runs it, and serves the page in the public/ folder.
+# Um app FastAPI pequeno. A Vercel roda ele e serve a página da pasta public/.
 import re
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Put the docs under /api, so all the app lives under /api.
+# A documentação fica em /api, assim todo o app mora em /api.
 app = FastAPI(docs_url="/api/docs", openapi_url="/api/openapi.json")
+
 
 # ---------------------------------------------------------------------------
 # Veículos: cadastrar, listar, consultar, atualizar e excluir.
 # ---------------------------------------------------------------------------
 
-# The vehicles live in memory, in a dict from id to vehicle.
-# They are lost when the server restarts. A database comes later.
-vehicles = {}
-next_id = 1
+# Os veículos ficam na memória, num dicionário que liga o id ao veículo.
+# Eles somem quando o servidor reinicia. O banco de dados vem depois.
+veiculos = {}
+proximo_id = 1
 
-# A plate is old style ABC1234 or Mercosul ABC1D23.
-PLATE = re.compile(r"^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$")
+# Placa no formato antigo ABC1234 ou no Mercosul ABC1D23.
+PLACA = re.compile(r"^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$")
 
-# The body of POST and PUT /api/veiculos, for example
+
+# O corpo de POST e PUT /api/veiculos, por exemplo
 # {"placa": "QRS4F21", "marca": "Volkswagen", "modelo": "Gol 1.6",
 #  "ano": 2022, "quilometragem": 82300, "cliente_id": 1}
-class Vehicle(BaseModel):
+class Veiculo(BaseModel):
     placa: str
     marca: str
     modelo: str
@@ -31,71 +33,71 @@ class Vehicle(BaseModel):
     cliente_id: int | None = None
 
 
-# Check the fields, and return the plate in upper case without "-".
-def check_vehicle(data: Vehicle):
-    plate = data.placa.upper().replace("-", "").strip()
-    if not PLATE.match(plate):
+# Confere os campos e devolve a placa em maiúsculas, sem "-".
+def validar_veiculo(entrada: Veiculo):
+    placa = entrada.placa.upper().replace("-", "").strip()
+    if not PLACA.match(placa):
         raise HTTPException(status_code=422, detail="Placa inválida. Use ABC1234 ou ABC1D23.")
-    if data.marca.strip() == "" or data.modelo.strip() == "":
+    if entrada.marca.strip() == "" or entrada.modelo.strip() == "":
         raise HTTPException(status_code=422, detail="Marca e modelo são obrigatórios.")
-    if data.ano < 1900 or data.ano > 2100:
+    if entrada.ano < 1900 or entrada.ano > 2100:
         raise HTTPException(status_code=422, detail="Ano inválido.")
-    if data.quilometragem < 0:
+    if entrada.quilometragem < 0:
         raise HTTPException(status_code=422, detail="A quilometragem não pode ser negativa.")
-    return plate
+    return placa
 
 
-# Give the vehicle, or answer 404 if there is none with this id.
-def find_vehicle(id: int):
-    if id not in vehicles:
+# Devolve o veículo, ou responde 404 se não existe nenhum com esse id.
+def buscar_veiculo(id: int):
+    if id not in veiculos:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
-    return vehicles[id]
+    return veiculos[id]
 
 
 # GET /api/veiculos
 @app.get("/api/veiculos")
-def list_vehicles():
-    return list(vehicles.values())
+def listar_veiculos():
+    return list(veiculos.values())
 
 
 # GET /api/veiculos/1
 @app.get("/api/veiculos/{id}")
-def get_vehicle(id: int):
-    return find_vehicle(id)
+def consultar_veiculo(id: int):
+    return buscar_veiculo(id)
 
 
 # POST /api/veiculos
 @app.post("/api/veiculos", status_code=201)
-def create_vehicle(data: Vehicle):
-    global next_id
-    plate = check_vehicle(data)
-    for vehicle in vehicles.values():
-        if vehicle["placa"] == plate:
+def cadastrar_veiculo(entrada: Veiculo):
+    global proximo_id
+    placa = validar_veiculo(entrada)
+    for veiculo in veiculos.values():
+        if veiculo["placa"] == placa:
             raise HTTPException(status_code=409, detail="Já existe um veículo com essa placa.")
 
-    vehicle = {"id": next_id, **data.model_dump(), "placa": plate}
-    vehicles[next_id] = vehicle
-    next_id += 1
-    return vehicle
+    veiculo = {"id": proximo_id, **entrada.model_dump(), "placa": placa}
+    veiculos[proximo_id] = veiculo
+    proximo_id += 1
+    return veiculo
 
 
 # PUT /api/veiculos/1
 @app.put("/api/veiculos/{id}")
-def update_vehicle(id: int, data: Vehicle):
-    find_vehicle(id)
-    plate = check_vehicle(data)
-    for vehicle in vehicles.values():
-        if vehicle["placa"] == plate and vehicle["id"] != id:
+def atualizar_veiculo(id: int, entrada: Veiculo):
+    buscar_veiculo(id)
+    placa = validar_veiculo(entrada)
+    for veiculo in veiculos.values():
+        if veiculo["placa"] == placa and veiculo["id"] != id:
             raise HTTPException(status_code=409, detail="Já existe um veículo com essa placa.")
 
-    vehicle = {"id": id, **data.model_dump(), "placa": plate}
-    vehicles[id] = vehicle
-    return vehicle
+    veiculo = {"id": id, **entrada.model_dump(), "placa": placa}
+    veiculos[id] = veiculo
+    return veiculo
 
 
 # DELETE /api/veiculos/1
-# When there are service orders, a vehicle with orders must not be deleted (409).
+# Quando existirem ordens de serviço, um veículo com ordens não pode ser excluído (409).
 @app.delete("/api/veiculos/{id}", status_code=204)
-def delete_vehicle(id: int):
-    find_vehicle(id)
-    del vehicles[id]
+def excluir_veiculo(id: int):
+    buscar_veiculo(id)
+    del veiculos[id]
